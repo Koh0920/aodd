@@ -32,9 +32,7 @@ See [`SKILL.md`](./SKILL.md) for the full cycle, role split (Operator / Inspecto
 User scope (available everywhere on your machine):
 
 ```bash
-mkdir -p ~/.claude/skills/aodd
-curl -fsSL https://raw.githubusercontent.com/Koh0920/aodd/main/SKILL.md \
-  -o ~/.claude/skills/aodd/SKILL.md
+npx -y skills add Koh0920/aodd -g -y
 ```
 
 Project scope (only this repo):
