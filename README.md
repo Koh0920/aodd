@@ -27,6 +27,55 @@ This repository ships AODD as a portable [Claude Code](https://docs.claude.com/e
 
 See [`SKILL.md`](./SKILL.md) for the full cycle, role split (Operator / Inspector / Fixer), Usecase Receipt format, and CI integration notes.
 
+## Screenshot compression setup (recommended)
+
+Playwright screenshots can be several megabytes when captured at native
+resolution, which causes `image too large` errors from the Anthropic API.
+The repository ships a PostToolUse hook that compresses every screenshot
+automatically.
+
+### 1 — Copy the hook script
+
+```bash
+mkdir -p ~/.claude/hooks
+curl -fsSL https://raw.githubusercontent.com/Koh0920/aodd/main/hooks/compress-screenshot.py \
+  -o ~/.claude/hooks/aodd-compress-screenshot.py
+chmod +x ~/.claude/hooks/aodd-compress-screenshot.py
+```
+
+### 2 — Register it in `~/.claude/settings.json`
+
+Add a `PostToolUse` entry under `"hooks"`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "screenshot",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/aodd-compress-screenshot.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook triggers on any tool whose name contains `"screenshot"` (covers
+`mcp__playwright__browser_screenshot` and similar variants). It resizes the
+image to at most 1280 × 800 and re-encodes it as JPEG at quality 65, keeping
+each screenshot well under 200 KB.
+
+**Compression back-ends tried in order**: `sips` (macOS, no install needed),
+`convert` (ImageMagick), `Pillow` (`pip install Pillow`). At least one of these
+is available on every supported platform.
+
+---
+
 ## Install as a Claude Code skill
 
 User scope (available everywhere on your machine):

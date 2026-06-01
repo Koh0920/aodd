@@ -120,7 +120,16 @@ browser.type
 browser.navigate
 browser.wait_for_text
 browser.go_back
+browser.resize
 ```
+
+> **Screenshot size budget**: before the first screenshot of a session call
+> `browser.resize` with `width: 1280, height: 720` (or smaller).  
+> Always pass `fullPage: false` — capture only the visible viewport, not the
+> full scroll height.  
+> When the tool supports a format option, request `jpeg` at quality `65`.  
+> Screenshots that exceed the API image-size limit abort the session;
+> keeping them small prevents that.
 
 **Layer 2 — Inspector tools (Inspector only, post-hoc)**
 
@@ -172,6 +181,24 @@ observe → think → act → wait → observe → ... → report
 - `act` is **narrow**: click, type, navigate, wait. No hidden inputs, no devtools execution.
 - The Operator narrates intent before each action ("I expect this button to submit the form") so hesitation and surprise are recoverable later.
 - If the Operator retries the same action more than twice, or pauses to re-read the same screen more than twice, mark the moment as a **stuck candidate** even if it eventually proceeds.
+- **Screenshot compression (mandatory)**: After every `browser.screenshot` call,
+  immediately run the following Bash snippet to compress the saved file before
+  it is attached to the Receipt or re-read for analysis:
+  ```bash
+  SS=$(ls -t /tmp/playwright-*.{png,jpg,jpeg} \
+             /tmp/aodd-ss-*.{png,jpg,jpeg} \
+             "$TMPDIR"/*.{png,jpg,jpeg} 2>/dev/null | head -1)
+  [ -n "$SS" ] && {
+    sips -z 720 1280 -s format jpeg -s formatOptions 65 "$SS" \
+         --out "${SS%.*}.jpg" 2>/dev/null \
+    && mv "${SS%.*}.jpg" "$SS" \
+    || convert "$SS" -resize 1280x720\> -quality 65 "$SS" 2>/dev/null \
+    || true
+  }
+  ```
+  If the screenshot is returned as inline base64 only (no file on disk), rely
+  on the `hooks/compress-screenshot.py` PostToolUse hook described in the
+  README to intercept and compress it automatically.
 
 Stop conditions:
 
