@@ -196,9 +196,33 @@ observe → think → act → wait → observe → ... → report
     || true
   }
   ```
+  On Windows, replace the snippet above with this PowerShell one-liner:
+  ```powershell
+  $ss = Get-ChildItem "$env:TEMP" -Filter "*.png" |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+  if ($ss) {
+    Add-Type -AssemblyName System.Drawing
+    $img = [System.Drawing.Image]::FromFile($ss)
+    $scale = [Math]::Min(1280/$img.Width, 720/$img.Height)
+    if ($scale -lt 1) {
+      $w = [int]($img.Width*$scale); $h = [int]($img.Height*$scale)
+      $bmp = New-Object System.Drawing.Bitmap($w,$h)
+      $g = [System.Drawing.Graphics]::FromImage($bmp)
+      $g.InterpolationMode = 'HighQualityBicubic'; $g.DrawImage($img,0,0,$w,$h); $g.Dispose()
+      $img.Dispose()
+      $enc = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() |
+             Where-Object { $_.MimeType -eq 'image/jpeg' } | Select-Object -First 1
+      $p = New-Object System.Drawing.Imaging.EncoderParameters(1)
+      $p.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter(
+        [System.Drawing.Imaging.Encoder]::Quality, 65L)
+      $bmp.Save($ss, $enc, $p); $bmp.Dispose()
+    } else { $img.Dispose() }
+  }
+  ```
   If the screenshot is returned as inline base64 only (no file on disk), rely
   on the `hooks/compress-screenshot.py` PostToolUse hook described in the
   README to intercept and compress it automatically.
+  The hook handles Windows natively via PowerShell — no extra installs required.
 
 Stop conditions:
 

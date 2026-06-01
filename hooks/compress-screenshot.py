@@ -10,7 +10,12 @@ image that is larger than MAX_B64_BYTES, this script:
 
   1. Decodes the image to a temp file.
   2. Compresses it to ≤ TARGET_WIDTH × TARGET_HEIGHT JPEG at JPEG_QUALITY.
-     Tries, in order: sips (macOS), ImageMagick convert, Pillow.
+     Tries, in order:
+       - sips          (macOS — built-in, no install needed)
+       - PowerShell    (Windows — built-in via System.Drawing, no install needed)
+       - magick        (Windows ImageMagick v7 CLI)
+       - convert       (ImageMagick v6 / Linux)
+       - Pillow        (cross-platform, pip install Pillow)
   3. Re-encodes and prints a replacement response JSON to stdout so Claude
      Code substitutes the compressed image for the original.
 
@@ -55,8 +60,54 @@ def _compress_sips(in_path: str, out_path: str) -> bool:
     return r.returncode == 0 and os.path.isfile(out_path) and os.path.getsize(out_path) > 0
 
 
+def _compress_powershell(in_path: str, out_path: str) -> bool:
+    """Windows built-in: PowerShell + System.Drawing — no extra installs required."""
+    script = (
+        "Add-Type -AssemblyName System.Drawing;"
+        f"$img=[System.Drawing.Image]::FromFile('{in_path}');"
+        f"$tw={TARGET_WIDTH};$th={TARGET_HEIGHT};"
+        "$rw=$img.Width;$rh=$img.Height;"
+        "if($rw -gt $tw -or $rh -gt $th){"
+        "  $scale=[Math]::Min($tw/$rw,$th/$rh);"
+        "  $rw=[int]($rw*$scale);$rh=[int]($rh*$scale)"
+        "};"
+        "$bmp=New-Object System.Drawing.Bitmap($rw,$rh);"
+        "$g=[System.Drawing.Graphics]::FromImage($bmp);"
+        "$g.InterpolationMode='HighQualityBicubic';"
+        "$g.DrawImage($img,0,0,$rw,$rh);"
+        "$g.Dispose();$img.Dispose();"
+        "$enc=[System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders()|"
+        "  Where-Object{$_.MimeType -eq 'image/jpeg'}|Select-Object -First 1;"
+        "$params=New-Object System.Drawing.Imaging.EncoderParameters(1);"
+        f"$params.Param[0]=New-Object System.Drawing.Imaging.EncoderParameter("
+        f"[System.Drawing.Imaging.Encoder]::Quality,{JPEG_QUALITY}L);"
+        f"$bmp.Save('{out_path}',$enc,$params);"
+        "$bmp.Dispose()"
+    )
+    r = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True,
+    )
+    return r.returncode == 0 and os.path.isfile(out_path) and os.path.getsize(out_path) > 0
+
+
+def _compress_imagemagick_v7(in_path: str, out_path: str) -> bool:
+    """ImageMagick v7 on Windows uses 'magick' instead of 'convert'."""
+    r = subprocess.run(
+        [
+            "magick",
+            in_path,
+            "-resize", f"{TARGET_WIDTH}x{TARGET_HEIGHT}>",
+            "-quality", str(JPEG_QUALITY),
+            out_path,
+        ],
+        capture_output=True,
+    )
+    return r.returncode == 0 and os.path.isfile(out_path) and os.path.getsize(out_path) > 0
+
+
 def _compress_imagemagick(in_path: str, out_path: str) -> bool:
-    """ImageMagick — available on most Linux systems."""
+    """ImageMagick v6 'convert' — available on Linux and older Windows installs."""
     r = subprocess.run(
         [
             "convert",
@@ -92,9 +143,11 @@ def compress(raw_bytes: bytes) -> bytes | None:
 
     try:
         ok = (
-            _compress_sips(in_path, out_path)
-            or _compress_imagemagick(in_path, out_path)
-            or _compress_pillow(in_path, out_path)
+            _compress_sips(in_path, out_path)           # macOS
+            or _compress_powershell(in_path, out_path)  # Windows (built-in)
+            or _compress_imagemagick_v7(in_path, out_path)  # Windows ImageMagick v7
+            or _compress_imagemagick(in_path, out_path) # Linux / ImageMagick v6
+            or _compress_pillow(in_path, out_path)      # cross-platform fallback
         )
         if ok:
             with open(out_path, "rb") as f:
@@ -147,7 +200,8 @@ def main() -> None:
         compressed = compress(raw_bytes)
         if compressed is None:
             sys.stderr.write(
-                "[aodd] no compression tool found (tried sips, convert, Pillow)\n"
+                "[aodd] no compression tool found "
+                "(tried sips, PowerShell, magick, convert, Pillow)\n"
             )
             continue
 

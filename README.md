@@ -70,9 +70,18 @@ The hook triggers on any tool whose name contains `"screenshot"` (covers
 image to at most 1280 × 800 and re-encodes it as JPEG at quality 65, keeping
 each screenshot well under 200 KB.
 
-**Compression back-ends tried in order**: `sips` (macOS, no install needed),
-`convert` (ImageMagick), `Pillow` (`pip install Pillow`). At least one of these
-is available on every supported platform.
+**Compression back-ends tried in order**:
+
+| Back-end | Platform | Install needed? |
+|---|---|---|
+| `sips` | macOS | No — built-in |
+| `PowerShell` + `System.Drawing` | Windows | No — built-in |
+| `magick` (ImageMagick v7) | Windows | Optional |
+| `convert` (ImageMagick v6) | Linux / Windows | Optional |
+| `Pillow` | All | `pip install Pillow` |
+
+At least one back-end is available on every supported platform without any
+extra installs (macOS → `sips`, Windows → `PowerShell`).
 
 ---
 
